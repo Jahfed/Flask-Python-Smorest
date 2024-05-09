@@ -3,7 +3,9 @@ import os
 from flask import Flask, jsonify
 from flask_smorest import Api
 from flask_jwt_extended import JWTManager
+from flask_migrate import Migrate
 
+from blocklist import BLOCKLIST
 from db import db
 import models
 
@@ -28,15 +30,30 @@ def create_app(db_url=None):
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     db.init_app(app)
 
+    migrate = Migrate(app,db)
     api=Api(app)
 
     # CONFIG JWT
     app.config["JWT_SECRET_KEY"] = "YdP6nqwI4sJCjUHoqQUT8UVGBqgVOyrr"
     jwt=JWTManager(app)
 
+    @jwt.token_in_blocklist_loader
+    def check_if_token_in_blocklist(jwt_header,jwt_payload):
+        return jwt_payload["jti"] in BLOCKLIST
+
+    @jwt.revoked_token_loader
+    def revoked_token_callback(jwt_header,jwt_payload):
+        return(jsonify({"description":"Token has been revoked.","error":"revoked_token"}),401)
+
+    @jwt.additional_claims_loader
+    def add_claims_to_jwt(identity):
+        if identity==1:
+            return {"is_admin":True}
+        return {"is_admin":False}
+
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header,jwt_payload):
-        return (jsonify({"message":"The token has expired.","error":"token_"}),401)
+        return (jsonify({"message":"The token has expired.","error":"token_expired"}),401)
 
     @jwt.invalid_token_loader
     def invalid_token_callback(error):
